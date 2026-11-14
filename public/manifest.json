@@ -1,0 +1,18 @@
+{
+  "name": "O Cara Híbrido 2.0",
+  "short_name": "Cara Híbrido",
+  "description": "Um corpo. Várias missões. Musculação, corrida e evolução.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

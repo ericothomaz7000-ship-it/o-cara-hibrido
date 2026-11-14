@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0A0A0A;
+  --surface: #141414;
+  --surface2: #1D1D1D;
+  --line: #2A2A2A;
+  --neon: #C8FF00;
+  --yellow: #FFD400;
+  --text: #FFFFFF;
+  --muted: #A8A8A8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Barlow', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+.font-poster { font-family: 'Oswald', sans-serif; letter-spacing: 0.02em; }
+input, select, textarea, button { font-family: inherit; }
+input, select, textarea {
+  background: #1D1D1D;
+  border: 1px solid #2A2A2A;
+  color: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  width: 100%;
+  outline: none;
+  font-size: 16px;
+}
+input:focus, select:focus, textarea:focus { border-color: #C8FF00; }
+button { cursor: pointer; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+.chip {
+  border: 1px solid #2A2A2A;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.bar { height: 10px; background: #2A2A2A; border-radius: 999px; overflow: hidden; }
+.bar > div { height: 100%; background: #C8FF00; border-radius: 999px; transition: width 0.3s ease; }
