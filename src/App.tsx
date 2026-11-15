@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, Award, Calendar, Camera, CheckCircle2, Dumbbell, Flame,
-  Footprints, Heart, LogOut, Plus, Send, Shield, Target, Trash2, Trophy, Upload, UserCheck, Users
+  Activity, Calendar as CalIcon, Camera, ChevronLeft, ChevronRight, Dumbbell,
+  Flame, Footprints, LogOut, Send, Settings, Trash2, Trophy, Upload, UserCheck, Users
 } from 'lucide-react';
 import { supabase } from './supabase';
 import { ExerciseThumbnail } from './components/ExerciseMedia';
@@ -49,6 +49,48 @@ const DEFAULT_PLANS: Record<string, { title: string; exercises: { name: string; 
       ],
     },
   ],
+  'ABCDE 5 Dias': [
+    {
+      title: 'Treino A • Peito',
+      exercises: [
+        { name: 'Supino Reto Barra', prescription: '4x8-10' },
+        { name: 'Supino Inclinado Halteres', prescription: '4x10' },
+        { name: 'Crucifixo Máquina / Polia', prescription: '3x12' },
+      ],
+    },
+    {
+      title: 'Treino B • Costas',
+      exercises: [
+        { name: 'Puxada Frontal', prescription: '4x10' },
+        { name: 'Remada Curvada', prescription: '4x8-10' },
+        { name: 'Remada Baixa Triângulo', prescription: '3x12' },
+      ],
+    },
+    {
+      title: 'Treino C • Pernas',
+      exercises: [
+        { name: 'Agachamento Livre', prescription: '4x8' },
+        { name: 'Leg Press 45°', prescription: '4x10' },
+        { name: 'Mesa Flexora', prescription: '3x12' },
+      ],
+    },
+    {
+      title: 'Treino D • Ombros',
+      exercises: [
+        { name: 'Desenvolvimento Militar', prescription: '4x8-10' },
+        { name: 'Elevação Lateral', prescription: '4x15' },
+        { name: 'Crucifixo Invertido', prescription: '3x12' },
+      ],
+    },
+    {
+      title: 'Treino E • Braços & Core',
+      exercises: [
+        { name: 'Rosca Direta Barra', prescription: '4x10' },
+        { name: 'Tríceps Testa / Corda', prescription: '4x10' },
+        { name: 'Prancha Abdominal', prescription: '3x60s' },
+      ],
+    },
+  ],
   'Upper / Lower': [
     {
       title: 'Upper A (Força)',
@@ -67,6 +109,17 @@ const DEFAULT_PLANS: Record<string, { title: string; exercises: { name: string; 
       ],
     },
   ],
+  'Full Body 3x': [
+    {
+      title: 'Full Body Completo',
+      exercises: [
+        { name: 'Agachamento Livre', prescription: '3x8' },
+        { name: 'Supino Reto', prescription: '3x8' },
+        { name: 'Puxada Frontal', prescription: '3x10' },
+        { name: 'Remo Ergômetro', prescription: '3x500m' },
+      ],
+    },
+  ],
 };
 
 const todayStr = () => {
@@ -75,10 +128,17 @@ const todayStr = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
+function formatPace(paceDecimal: number) {
+  if (!paceDecimal || !isFinite(paceDecimal)) return '--';
+  const mins = Math.floor(paceDecimal);
+  const secs = Math.round((paceDecimal - mins) * 60);
+  return `${mins}:${secs.toString().padStart(2, '0')} min/km`;
+}
+
 export default function App() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [tab, setTab] = useState<'hoje' | 'corrida' | 'comunidade' | 'alunos' | 'progresso'>('hoje');
+  const [tab, setTab] = useState<'hoje' | 'agenda' | 'corrida' | 'comunidade' | 'alunos' | 'progresso'>('hoje');
   const [loading, setLoading] = useState(true);
 
   // Auth states
@@ -101,14 +161,23 @@ export default function App() {
   const [bodyHistory, setBodyHistory] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [assignedPlans, setAssignedPlans] = useState<any[]>([]);
+  const [customPlans, setCustomPlans] = useState<any[]>([]);
 
   // Active workout state
-  const [sessionTitle, setSessionTitle] = useState('Treino Híbrido do Dia');
+  const [selectedCategory, setSelectedCategory] = useState<string>('Híbrido Performance');
+  const [sessionTitle, setSessionTitle] = useState('Força Base + Hyrox Engine');
   const [sessionExercises, setSessionExercises] = useState<WorkoutExercise[]>([
-    { name: 'Agachamento Livre', prescription: '3x10', sets: [{ weight: 60, reps: 10, done: false }] },
+    { name: 'Agachamento Livre', prescription: '4x6-8', sets: [{ weight: 60, reps: 8, done: false }] },
   ]);
   const [newExName, setNewExName] = useState('');
   const [newExPresc, setNewExPresc] = useState('3x12');
+
+  // Calendar state
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [selectedDay, setSelectedDay] = useState(todayStr());
 
   // Check-in & Water state
   const [sleepH, setSleepH] = useState('7.5');
@@ -128,10 +197,15 @@ export default function App() {
   const [postFile, setPostFile] = useState<File | null>(null);
   const [posting, setPosting] = useState(false);
 
-  // Body update state
+  // Body & Profile update states
   const [newWeight, setNewWeight] = useState('');
   const [newWaist, setNewWaist] = useState('');
   const [newBf, setNewBf] = useState('');
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [editAge, setEditAge] = useState('28');
+  const [editHeight, setEditHeight] = useState('175');
+  const [editGender, setEditGender] = useState('M');
+  const [editRole, setEditRole] = useState<'atleta' | 'treinador'>('atleta');
 
   // Coach & Student link states
   const [coachCodeInput, setCoachCodeInput] = useState('');
@@ -140,9 +214,9 @@ export default function App() {
   const [prescNote, setPrescNote] = useState('');
   const [prescExercisesText, setPrescExercisesText] = useState('Agachamento Livre | 4x8\nCorrida Intervalada | 6x400m');
 
-  async function loadAllData(activeId?: string) {
-    setLoading(true);
-    const [uRes, wRes, rRes, cRes, bRes, pRes, aRes] = await Promise.all([
+  async function loadAllData(activeId?: string, silent = false) {
+    if (!silent) setLoading(true);
+    const [uRes, wRes, rRes, cRes, bRes, pRes, aRes, cpRes] = await Promise.all([
       supabase.from('ch_users').select('*'),
       supabase.from('ch_workouts').select('*').order('created_at', { ascending: false }),
       supabase.from('ch_runs').select('*').order('created_at', { ascending: false }),
@@ -150,6 +224,7 @@ export default function App() {
       supabase.from('ch_body').select('*').order('created_at', { ascending: true }),
       supabase.from('ch_posts').select('*').order('created_at', { ascending: false }).limit(40),
       supabase.from('ch_assigned_plans').select('*').order('created_at', { ascending: false }),
+      supabase.from('ch_custom_plans').select('*').order('created_at', { ascending: false }),
     ]);
 
     const allUsers = (uRes.data || []) as UserProfile[];
@@ -160,18 +235,23 @@ export default function App() {
     setBodyHistory(bRes.data || []);
     setPosts(pRes.data || []);
     setAssignedPlans(aRes.data || []);
+    setCustomPlans(cpRes.data || []);
 
     const savedId = activeId || localStorage.getItem('ch_user_id');
     if (savedId) {
       const found = allUsers.find((u) => u.id === savedId) || null;
       setCurrentUser(found);
-      if (found) {
+      if (found && !silent) {
         const todayCi = (cRes.data || []).find((c: any) => c.user_id === found.id && c.date === todayStr());
         setWaterMl(todayCi?.water_ml || 0);
         setStravaIdInput(found.strava_athlete_id || '');
+        setEditAge(String(found.age || 28));
+        setEditHeight(String(found.height || 175));
+        setEditGender(found.gender || 'M');
+        setEditRole(found.role || 'atleta');
       }
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   }
 
   useEffect(() => {
@@ -185,9 +265,7 @@ export default function App() {
     );
     if (!user) return alert('Apelido ou senha incorretos.');
     localStorage.setItem('ch_user_id', user.id);
-    setCurrentUser(user);
-    const todayCi = checkins.find((c) => c.user_id === user.id && c.date === todayStr());
-    setWaterMl(todayCi?.water_ml || 0);
+    await loadAllData(user.id);
   }
 
   async function handleRegister(e: React.FormEvent) {
@@ -228,6 +306,27 @@ export default function App() {
     await loadAllData(data.id);
   }
 
+  async function saveProfileSettings() {
+    if (!currentUser) return;
+    const inviteCode = editRole === 'treinador'
+      ? (currentUser.invite_code || `CH-${currentUser.nickname.toUpperCase().slice(0, 4)}-${Math.floor(100 + Math.random() * 900)}`)
+      : currentUser.invite_code;
+
+    await supabase.from('ch_users').update({
+      age: Number(editAge) || 28,
+      height: Number(editHeight) || 175,
+      gender: editGender,
+      role: editRole,
+      invite_code: inviteCode,
+    }).eq('id', currentUser.id);
+
+    setEditProfileOpen(false);
+    alert(editRole === 'treinador'
+      ? `Perfil atualizado! Seu código de Treinador é: ${inviteCode}`
+      : 'Dados biométricos do perfil atualizados!');
+    loadAllData(currentUser.id, true);
+  }
+
   const liveVolume = useMemo(() => {
     return sessionExercises.reduce(
       (acc, ex) => acc + ex.sets.reduce((sAcc, s) => sAcc + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0),
@@ -241,7 +340,7 @@ export default function App() {
     const { error } = await supabase.from('ch_workouts').insert({
       user_id: currentUser.id,
       date: todayStr(),
-      plan: currentUser.plan || 'Híbrido Performance',
+      plan: selectedCategory,
       day_label: 'Sessão',
       title: sessionTitle,
       exercises: sessionExercises,
@@ -250,8 +349,26 @@ export default function App() {
     });
     if (error) return alert('Erro ao salvar treino: ' + error.message);
     setPostMetrics(`${sessionTitle} • Volume: ${liveVolume} kg`);
-    alert(`Treino salvo! +${points} pts no ranking.`);
-    loadAllData(currentUser.id);
+    alert(`Treino salvo no histórico! +${points} pts no ranking.`);
+    loadAllData(currentUser.id, true);
+  }
+
+  async function saveAsCustomPlan() {
+    if (!currentUser) return;
+    await supabase.from('ch_custom_plans').insert({
+      user_id: currentUser.id,
+      title: sessionTitle,
+      category: 'Personalizado',
+      exercises: sessionExercises.map((e) => ({ name: e.name, prescription: e.prescription })),
+    });
+    alert(`Ficha "${sessionTitle}" salva nos seus modelos!`);
+    loadAllData(currentUser.id, true);
+  }
+
+  async function deleteWorkout(id: string) {
+    if (!currentUser || !confirm('Excluir este treino do histórico?')) return;
+    await supabase.from('ch_workouts').delete().eq('id', id);
+    loadAllData(currentUser.id, true);
   }
 
   async function handleWaterChange(newMl: number) {
@@ -259,10 +376,14 @@ export default function App() {
     setWaterMl(newMl);
     const goalMl = Math.round(((currentUser.weight || 75) * 35) / 50) * 50;
     const existing = checkins.find((c) => c.user_id === currentUser.id && c.date === todayStr());
+
     if (existing) {
+      setCheckins((prev) =>
+        prev.map((c) => (c.id === existing.id ? { ...c, water_ml: newMl, water_goal_ml: goalMl } : c))
+      );
       await supabase.from('ch_checkins').update({ water_ml: newMl, water_goal_ml: goalMl }).eq('id', existing.id);
     } else {
-      await supabase.from('ch_checkins').insert({
+      const newRow = {
         user_id: currentUser.id,
         date: todayStr(),
         sleep: Number(sleepH.replace(',', '.')) || 7.5,
@@ -271,9 +392,10 @@ export default function App() {
         readiness: 80,
         water_ml: newMl,
         water_goal_ml: goalMl,
-      });
+      };
+      const { data } = await supabase.from('ch_checkins').insert(newRow).select().single();
+      if (data) setCheckins((prev) => [data, ...prev]);
     }
-    loadAllData(currentUser.id);
   }
 
   async function saveCheckin() {
@@ -300,7 +422,7 @@ export default function App() {
       });
     }
     alert(`Check-in salvo! Prontidão hoje: ${readiness}%`);
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function saveRun() {
@@ -317,9 +439,9 @@ export default function App() {
       duration: dur,
       pace,
     });
-    setPostMetrics(`Corrida (${runType}) • ${dist} km • Pace ${pace.toFixed(2)} min/km`);
-    alert(`Corrida salva! Pace médio: ${pace.toFixed(2)} min/km`);
-    loadAllData(currentUser.id);
+    setPostMetrics(`Corrida (${runType}) • ${dist} km • ${formatPace(pace)}`);
+    alert(`Corrida salva! Ritmo médio: ${formatPace(pace)}`);
+    loadAllData(currentUser.id, true);
   }
 
   async function handleGpxUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -358,14 +480,14 @@ export default function App() {
       pace,
     });
     alert(`GPX importado! ${distFixed} km em ${durFixed} min (Data: ${localDate})`);
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function saveStravaLink() {
     if (!currentUser) return;
     await supabase.from('ch_users').update({ strava_athlete_id: stravaIdInput.trim() }).eq('id', currentUser.id);
     alert('ID/Perfil Strava vinculado com sucesso!');
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function publishPost() {
@@ -400,7 +522,7 @@ export default function App() {
     setPostMetrics('');
     setPostFile(null);
     setPosting(false);
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function toggleLike(post: any) {
@@ -410,7 +532,7 @@ export default function App() {
       ? likes.filter((id) => id !== currentUser.id)
       : [...likes, currentUser.id];
     await supabase.from('ch_posts').update({ likes: updated }).eq('id', post.id);
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function linkToCoach() {
@@ -420,7 +542,7 @@ export default function App() {
     await supabase.from('ch_users').update({ coach_id: coach.id }).eq('id', currentUser.id);
     alert(`Vinculado ao treinador ${coach.name}!`);
     setCoachCodeInput('');
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function prescribeWorkout() {
@@ -445,7 +567,7 @@ export default function App() {
     alert('Treino enviado para o painel HOJE do aluno!');
     setPrescTitle('');
     setPrescNote('');
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   async function saveBodyMetrics() {
@@ -465,7 +587,7 @@ export default function App() {
     setNewWeight('');
     setNewWaist('');
     setNewBf('');
-    loadAllData(currentUser.id);
+    loadAllData(currentUser.id, true);
   }
 
   const ranking = useMemo(() => {
@@ -547,10 +669,21 @@ export default function App() {
 
   const myWorkouts = workouts.filter((w) => w.user_id === currentUser.id);
   const myRuns = runs.filter((r) => r.user_id === currentUser.id);
+  const myCheckins = checkins.filter((c) => c.user_id === currentUser.id);
   const myBody = bodyHistory.filter((b) => b.user_id === currentUser.id);
   const myAssigned = assignedPlans.filter((p) => p.student_id === currentUser.id);
+  const myCustom = customPlans.filter((p) => p.user_id === currentUser.id);
   const myStudents = users.filter((u) => u.coach_id === currentUser.id);
   const totalVolumeKg = myWorkouts.reduce((acc, w) => acc + (Number(w.volume) || 0), 0);
+
+  const year = calMonth.getFullYear();
+  const month = calMonth.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstWeekday = new Date(year, month, 1).getDay();
+
+  const availableTemplates = selectedCategory === 'Minhas Fichas'
+    ? myCustom.map((cp) => ({ title: cp.title, exercises: cp.exercises || [] }))
+    : DEFAULT_PLANS[selectedCategory] || [];
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-white pb-24">
@@ -572,7 +705,6 @@ export default function App() {
       <main className="max-w-xl mx-auto p-4 space-y-5">
         {tab === 'hoje' && (
           <>
-            {/* Check-in + Água */}
             <section className="bg-[#141414] border border-[#2A2A2A] rounded-2xl p-4 space-y-3">
               <div className="flex justify-between items-center">
                 <h2 className="text-xs font-bold tracking-widest text-[#C8FF00]">CHECK-IN & HIDRATAÇÃO DIÁRIA</h2>
@@ -600,7 +732,6 @@ export default function App() {
               </button>
             </section>
 
-            {/* Treinos prescritos pelo Treinador */}
             {myAssigned.length > 0 && (
               <section className="bg-[#141414] border border-[#C8FF00]/50 rounded-2xl p-4 space-y-3">
                 <span className="text-xs font-bold tracking-widest text-[#C8FF00] flex items-center gap-1.5">
@@ -632,35 +763,50 @@ export default function App() {
               </section>
             )}
 
-            {/* Sessão de Treino Ativa */}
             <section className="bg-[#141414] border border-[#2A2A2A] rounded-2xl p-4 space-y-4">
-              <div className="flex justify-between items-center">
-                <div>
+              <div className="flex justify-between items-start gap-2">
+                <div className="flex-1">
                   <span className="text-[10px] font-bold tracking-widest text-[#C8FF00]">SESSÃO DE TREINO</span>
-                  <input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} className="block bg-transparent font-poster text-lg font-bold text-white focus:outline-none" />
+                  <input value={sessionTitle} onChange={(e) => setSessionTitle(e.target.value)} className="w-full bg-transparent font-poster text-base font-bold text-white focus:outline-none" />
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0">
                   <span className="text-[10px] text-[#A8A8A8] block">VOLUME AO VIVO</span>
                   <strong className="font-poster text-lg text-[#C8FF00]">{liveVolume} kg</strong>
                 </div>
               </div>
 
-              {/* Templates rápidos */}
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
-                {Object.entries(DEFAULT_PLANS).flatMap(([cat, list]) =>
-                  list.map((tpl) => (
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-[#A8A8A8] block">ESCOLHER DIVISÃO DO PLANO:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...Object.keys(DEFAULT_PLANS), ...(myCustom.length > 0 ? ['Minhas Fichas'] : [])].map((cat) => (
                     <button
-                      key={tpl.title}
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                        selectedCategory === cat ? 'bg-[#C8FF00] text-black border-[#C8FF00]' : 'bg-black border-[#2A2A2A] text-[#A8A8A8]'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                  {availableTemplates.map((tpl: any, i: number) => (
+                    <button
+                      key={`${tpl.title}-${i}`}
                       onClick={() => {
                         setSessionTitle(tpl.title);
-                        setSessionExercises(tpl.exercises.map((e) => ({ ...e, sets: [{ weight: 0, reps: 10, done: false }] })));
+                        setSessionExercises(tpl.exercises.map((e: any) => ({ ...e, sets: [{ weight: 0, reps: 10, done: false }] })));
                       }}
-                      className="shrink-0 bg-black border border-[#2A2A2A] hover:border-[#C8FF00] px-3 py-1.5 rounded-xl text-[11px] font-bold"
+                      className={`text-left bg-black border px-3 py-2 rounded-xl text-xs font-bold ${
+                        sessionTitle === tpl.title ? 'border-[#C8FF00] text-[#C8FF00]' : 'border-[#2A2A2A] text-white'
+                      }`}
                     >
                       {tpl.title}
                     </button>
-                  ))
-                )}
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -750,11 +896,114 @@ export default function App() {
                 </button>
               </div>
 
-              <button onClick={saveWorkout} className="w-full bg-[#C8FF00] text-black font-black py-3 rounded-xl text-sm">
-                CONCLUIR E SALVAR TREINO
-              </button>
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={saveAsCustomPlan} className="col-span-1 bg-black border border-[#2A2A2A] text-[#A8A8A8] hover:text-white font-bold py-3 rounded-xl text-[11px]">
+                  SALVAR FICHA
+                </button>
+                <button onClick={saveWorkout} className="col-span-2 bg-[#C8FF00] text-black font-black py-3 rounded-xl text-xs">
+                  CONCLUIR E SALVAR TREINO
+                </button>
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <span className="text-xs font-bold tracking-widest text-[#A8A8A8]">HISTÓRICO DE TREINOS REALIZADOS ({myWorkouts.length})</span>
+              {myWorkouts.map((w) => (
+                <div key={w.id} className="bg-[#141414] border border-[#2A2A2A] rounded-xl p-3 flex justify-between items-center text-xs">
+                  <div>
+                    <strong className="text-white block">{w.title}</strong>
+                    <span className="text-[#A8A8A8]">{w.date} • Volume: {w.volume || 0} kg</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-[#C8FF00]">+{w.points || 100} pts</span>
+                    <button onClick={() => deleteWorkout(w.id)} className="text-[#A8A8A8] hover:text-red-400">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </section>
           </>
+        )}
+
+        {tab === 'agenda' && (
+          <section className="space-y-4">
+            <div className="bg-[#141414] border border-[#2A2A2A] rounded-2xl p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <button onClick={() => setCalMonth(new Date(year, month - 1, 1))} className="p-1.5 bg-black border border-[#2A2A2A] rounded-lg">
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="font-poster text-sm font-bold uppercase">
+                  {calMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                </span>
+                <button onClick={() => setCalMonth(new Date(year, month + 1, 1))} className="p-1.5 bg-black border border-[#2A2A2A] rounded-lg">
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-[#A8A8A8] font-bold">
+                {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+              </div>
+
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: firstWeekday }).map((_, i) => <div key={`empty-${i}`} />)}
+                {Array.from({ length: daysInMonth }).map((_, idx) => {
+                  const dayNum = idx + 1;
+                  const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+                  const hasW = myWorkouts.some((w) => w.date === iso);
+                  const hasR = myRuns.some((r) => r.date === iso);
+                  const hasC = myCheckins.some((c) => c.date === iso);
+                  const isSelected = selectedDay === iso;
+
+                  return (
+                    <button
+                      key={iso}
+                      onClick={() => setSelectedDay(iso)}
+                      className={`h-11 rounded-xl border flex flex-col items-center justify-center text-xs font-bold ${
+                        isSelected ? 'border-[#C8FF00] bg-[#C8FF00]/15 text-white' : 'border-[#2A2A2A] bg-black text-[#D4D4D4]'
+                      }`}
+                    >
+                      <span>{dayNum}</span>
+                      <div className="flex gap-0.5 mt-0.5">
+                        {hasW && <span className="w-1.5 h-1.5 rounded-full bg-[#C8FF00]" />}
+                        {hasR && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />}
+                        {hasC && <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex justify-center gap-4 text-[10px] text-[#A8A8A8] pt-1">
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-[#C8FF00] inline-block" /> Treino</span>
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> Corrida</span>
+                <span className="flex items-center gap-1"><i className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Check-in</span>
+              </div>
+            </div>
+
+            <div className="bg-[#141414] border border-[#2A2A2A] rounded-2xl p-4 space-y-2 text-xs">
+              <span className="text-xs font-bold tracking-widest text-[#C8FF00]">ATIVIDADES EM {selectedDay}</span>
+              {myWorkouts.filter((w) => w.date === selectedDay).map((w) => (
+                <div key={w.id} className="bg-black border border-[#2A2A2A] rounded-xl p-2.5">
+                  <strong className="text-[#C8FF00]">Musculação/Hyrox:</strong> {w.title} ({w.volume} kg)
+                </div>
+              ))}
+              {myRuns.filter((r) => r.date === selectedDay).map((r) => (
+                <div key={r.id} className="bg-black border border-[#2A2A2A] rounded-xl p-2.5">
+                  <strong className="text-orange-400">Corrida:</strong> {r.type} • {r.distance} km ({formatPace(r.pace)})
+                </div>
+              ))}
+              {myCheckins.filter((c) => c.date === selectedDay).map((c) => (
+                <div key={c.id} className="bg-black border border-[#2A2A2A] rounded-xl p-2.5">
+                  <strong className="text-sky-400">Check-in:</strong> Prontidão {c.readiness}% • Água: {c.water_ml || 0} ml
+                </div>
+              ))}
+              {!myWorkouts.some((w) => w.date === selectedDay) &&
+                !myRuns.some((r) => r.date === selectedDay) &&
+                !myCheckins.some((c) => c.date === selectedDay) && (
+                  <p className="text-[#A8A8A8]">Nenhum registro encontrado nesta data.</p>
+                )}
+            </div>
+          </section>
         )}
 
         {tab === 'corrida' && (
@@ -804,7 +1053,7 @@ export default function App() {
                     <strong className="text-white block">{r.type} • {r.distance} km</strong>
                     <span className="text-[#A8A8A8]">{r.date} • {r.duration} min</span>
                   </div>
-                  <span className="font-poster text-sm text-[#C8FF00]">{r.pace} min/km</span>
+                  <span className="font-poster text-sm text-[#C8FF00]">{formatPace(r.pace)}</span>
                 </div>
               ))}
             </div>
@@ -880,6 +1129,15 @@ export default function App() {
                   <input value={coachCodeInput} onChange={(e) => setCoachCodeInput(e.target.value)} placeholder="Ex: CH-THZ-123" className="flex-1 bg-black border border-[#2A2A2A] rounded-xl p-2.5 text-xs uppercase" />
                   <button onClick={linkToCoach} className="bg-[#C8FF00] text-black font-black px-4 rounded-xl text-xs">CONECTAR</button>
                 </div>
+                <div className="pt-2 border-t border-[#2A2A2A]">
+                  <p className="text-[11px] text-[#A8A8A8] mb-2">Você é o treinador? Ative o modo Coach no seu perfil:</p>
+                  <button
+                    onClick={() => { setTab('progresso'); setEditProfileOpen(true); }}
+                    className="w-full bg-black border border-[#C8FF00] text-[#C8FF00] font-bold py-2 rounded-xl text-xs"
+                  >
+                    ATIVAR MODO TREINADOR (COACH)
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -937,6 +1195,64 @@ export default function App() {
             />
 
             <div className="bg-[#141414] border border-[#2A2A2A] rounded-2xl p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold tracking-widest text-[#C8FF00]">DADOS FIXOS & MODO TREINADOR</span>
+                <button
+                  onClick={() => setEditProfileOpen(!editProfileOpen)}
+                  className="text-xs font-bold text-[#C8FF00] flex items-center gap-1 bg-black border border-[#2A2A2A] px-3 py-1.5 rounded-xl"
+                >
+                  <Settings size={13} /> {editProfileOpen ? 'FECHAR' : 'EDITAR PERFIL'}
+                </button>
+              </div>
+
+              {editProfileOpen && (
+                <div className="space-y-3 pt-2 border-t border-[#2A2A2A] text-xs">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] text-[#A8A8A8]">IDADE</label>
+                      <input value={editAge} onChange={(e) => setEditAge(e.target.value)} className="w-full bg-black border border-[#2A2A2A] rounded-xl p-2 mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#A8A8A8]">ALTURA (CM)</label>
+                      <input value={editHeight} onChange={(e) => setEditHeight(e.target.value)} className="w-full bg-black border border-[#2A2A2A] rounded-xl p-2 mt-1" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#A8A8A8]">GÊNERO</label>
+                      <select value={editGender} onChange={(e) => setEditGender(e.target.value)} className="w-full bg-black border border-[#2A2A2A] rounded-xl p-2 mt-1">
+                        <option value="M">Masculino</option>
+                        <option value="F">Feminino</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-[#A8A8A8] block mb-1">TIPO DE CONTA NA PLATAFORMA</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditRole('atleta')}
+                        className={`py-2 rounded-xl font-bold border ${editRole === 'atleta' ? 'border-[#C8FF00] bg-[#C8FF00]/15 text-[#C8FF00]' : 'border-[#2A2A2A] text-[#A8A8A8]'}`}
+                      >
+                        ATLETA
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditRole('treinador')}
+                        className={`py-2 rounded-xl font-bold border ${editRole === 'treinador' ? 'border-[#C8FF00] bg-[#C8FF00]/15 text-[#C8FF00]' : 'border-[#2A2A2A] text-[#A8A8A8]'}`}
+                      >
+                        TREINADOR (COACH)
+                      </button>
+                    </div>
+                  </div>
+
+                  <button onClick={saveProfileSettings} className="w-full bg-[#C8FF00] text-black font-black py-2.5 rounded-xl">
+                    SALVAR CONFIGURAÇÕES DO PERFIL
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-[#141414] border border-[#2A2A2A] rounded-2xl p-4 space-y-3">
               <span className="text-xs font-bold tracking-widest text-[#C8FF00]">ATUALIZAR MEDIDAS CORPORAIS</span>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <input value={newWeight} onChange={(e) => setNewWeight(e.target.value)} placeholder="Peso (kg)" className="bg-black border border-[#2A2A2A] rounded-xl p-2.5" />
@@ -961,9 +1277,10 @@ export default function App() {
         )}
       </main>
 
-      <nav className="fixed bottom-0 inset-x-0 bg-[#0A0A0A]/95 backdrop-blur border-t border-[#2A2A2A] px-2 py-2 flex justify-around text-[10px] font-bold">
+      <nav className="fixed bottom-0 inset-x-0 bg-[#0A0A0A]/95 backdrop-blur border-t border-[#2A2A2A] px-1 py-2 flex justify-around text-[9px] font-bold">
         {[
           { id: 'hoje', label: 'HOJE', icon: Dumbbell },
+          { id: 'agenda', label: 'AGENDA', icon: CalIcon },
           { id: 'corrida', label: 'CORRIDA', icon: Footprints },
           { id: 'comunidade', label: 'MURAL', icon: Camera },
           { id: 'alunos', label: currentUser.role === 'treinador' ? 'ALUNOS' : 'COACH', icon: Users },
@@ -975,9 +1292,9 @@ export default function App() {
             <button
               key={item.id}
               onClick={() => setTab(item.id as any)}
-              className={`flex flex-col items-center gap-1 px-3 py-1 rounded-xl ${active ? 'text-[#C8FF00]' : 'text-[#A8A8A8]'}`}
+              className={`flex flex-col items-center gap-1 px-2 py-1 rounded-xl ${active ? 'text-[#C8FF00]' : 'text-[#A8A8A8]'}`}
             >
-              <Icon size={18} />
+              <Icon size={17} />
               {item.label}
             </button>
           );
